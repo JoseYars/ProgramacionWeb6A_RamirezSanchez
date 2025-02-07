@@ -33,6 +33,17 @@
         .celda.revelada {
             pointer-events: none;
         }
+
+        .celda.marcada {
+            background-color: #ffcccb;
+        }
+
+        .mensaje-perdida {
+            margin-top: 10px;
+            color: red;
+            font-size: 18px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -45,9 +56,11 @@
     </select>
 
     <div id="tablero"></div>
+    <div id="mensaje"></div>
 
     <script>
         const coloresNumeros = ['blue', 'green', 'red', 'purple', 'maroon', 'teal', 'black', 'gray'];
+        let juegoTerminado = false;
 
         function generarTablero(filas, columnas) {
             var tablero = document.getElementById("tablero");
@@ -62,7 +75,12 @@
                     const fila = i;
                     const columna = j;
 
+                    celda.dataset.fila = fila;
+                    celda.dataset.columna = columna;
+
                     celda.addEventListener('click', async (e) => {
+                        if (juegoTerminado || celda.classList.contains('marcada')) return;
+
                         await fetch(window.location.href + 'revelar_celda.php', {
                             method: 'POST',
                             headers: {
@@ -73,21 +91,24 @@
                             })
                         }).then(response => response.json())
                         .then(data => {
-                            const spanNumero = document.createElement('span');
-
-                            e.target.classList.add('revelada');
-
-                            if (data.valor !== -1 && data.valor !== 0) {
-                                spanNumero.setAttribute('style', `color: ${coloresNumeros[data.valor - 1]}`);
-                                spanNumero.textContent = data.valor;
-                                e.target.appendChild(spanNumero);
-                            } else if (data.valor == 0) {
-                                spanNumero.textContent = '';
-                                e.target.setAttribute('style', 'background-color: gray');
-                                e.target.appendChild(spanNumero);
+                            if (data.valor === -1) {
+                                juegoTerminado = true;
+                                mostrarMensajePerdida();
+                                revelarTodasLasMinas();
                             } else {
-                                spanNumero.textContent = '@';
-                                e.target.appendChild(spanNumero);
+                                const spanNumero = document.createElement('span');
+
+                                e.target.classList.add('revelada');
+
+                                if (data.valor !== -1 && data.valor !== 0) {
+                                    spanNumero.setAttribute('style', `color: ${coloresNumeros[data.valor - 1]}`);
+                                    spanNumero.textContent = data.valor;
+                                    e.target.appendChild(spanNumero);
+                                } else if (data.valor == 0) {
+                                    spanNumero.textContent = '';
+                                    e.target.setAttribute('style', 'background-color: gray');
+                                    e.target.appendChild(spanNumero);
+                                }
                             }
                         })
                         .catch(error => {
@@ -95,11 +116,60 @@
                         });
                     });
 
+                    celda.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        if (juegoTerminado) return;
+
+                        if (celda.classList.contains('marcada')) {
+                            celda.classList.remove('marcada');
+                            celda.textContent = '';
+                        } else {
+                            celda.classList.add('marcada');
+                            celda.textContent = '🚩';
+                        }
+                    });
+
                     tablero.appendChild(celda);
                 }
             }
 
             tablero.style.gridTemplateColumns = `repeat(${columnas}, 30px)`;
+        }
+
+        function mostrarMensajePerdida() {
+            const mensajeDiv = document.getElementById('mensaje');
+            mensajeDiv.innerHTML = '<div class="mensaje-perdida">¡Has perdido! 😢</div>';
+
+            // Espera 3 segundos y reinicia el juego automáticamente
+            setTimeout(() => {
+                location.reload();
+            }, 3000);
+        }
+
+        function revelarTodasLasMinas() {
+            const celdas = document.querySelectorAll('.celda');
+            celdas.forEach(celda => {
+                const fila = celda.dataset.fila;
+                const columna = celda.dataset.columna;
+
+                if (!celda.classList.contains('revelada')) {
+                    fetch(window.location.href + 'revelar_celda.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            fila, columna
+                        })
+                    }).then(response => response.json())
+                    .then(data => {
+                        if (data.valor === -1) {
+                            celda.textContent = '💣';
+                            celda.classList.add('revelada');
+                        }
+                    });
+                }
+            });
         }
 
         document.querySelector('#nivel').addEventListener('change', async (e) => {
