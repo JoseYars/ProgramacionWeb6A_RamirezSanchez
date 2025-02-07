@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscaminas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        #tablero {
+            display: grid;
+            grid-template-columns: repeat(8, 30px);
+            gap: 2px;
+        }
+
+        .celda {
+            width: 30px;
+            height: 30px;
+            background-color: #ddd;
+            border: 1px solid #888;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .celda:hover {
+            background-color: #ccc;
+        }
+
+        .celda.revelada {
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <label for="nivel">Selecciona el nivel</label>
+    <select id="nivel">
+        <option value="">Ninguno</option>
+        <option value="facil">Fácil</option>
+        <option value="medio">Medio</option>
+        <option value="dificil">Difícil</option>
+    </select>
+
+    <div id="tablero"></div>
+
+    <script>
+        const coloresNumeros = ['blue', 'green', 'red', 'purple', 'maroon', 'teal', 'black', 'gray'];
+
+        function generarTablero(filas, columnas) {
+            var tablero = document.getElementById("tablero");
+            tablero.innerHTML = "";
+
+            for (var i = 0; i < filas; i++) {
+                for (var j = 0; j < columnas; j++) {
+                    var celda = document.createElement('div');
+                    celda.className = "celda";
+                    celda.textContent = "";
+
+                    const fila = i;
+                    const columna = j;
+
+                    celda.addEventListener('click', async (e) => {
+                        await fetch(window.location.href + 'revelar_celda.php', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                fila, columna
+                            })
+                        }).then(response => response.json())
+                        .then(data => {
+                            const spanNumero = document.createElement('span');
+
+                            e.target.classList.add('revelada');
+
+                            if (data.valor !== -1 && data.valor !== 0) {
+                                spanNumero.setAttribute('style', `color: ${coloresNumeros[data.valor - 1]}`);
+                                spanNumero.textContent = data.valor;
+                                e.target.appendChild(spanNumero);
+                            } else if (data.valor == 0) {
+                                spanNumero.textContent = '';
+                                e.target.setAttribute('style', 'background-color: gray');
+                                e.target.appendChild(spanNumero);
+                            } else {
+                                spanNumero.textContent = '@';
+                                e.target.appendChild(spanNumero);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                        });
+                    });
+
+                    tablero.appendChild(celda);
+                }
+            }
+
+            tablero.style.gridTemplateColumns = `repeat(${columnas}, 30px)`;
+        }
+
+        document.querySelector('#nivel').addEventListener('change', async (e) => {
+            var nivel = document.getElementById("nivel").value;
+
+            var filas, columnas;
+            switch (nivel) {
+                case "facil":
+                    filas = 8;
+                    columnas = 8;
+                    break;
+                case "medio":
+                    filas = 16;
+                    columnas = 16;
+                    break;
+                case "dificil":
+                    filas = 16;
+                    columnas = 30;
+                    break;
+            }
+
+            await fetch(window.location.href + 'generar_tablero.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    nivel
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+                generarTablero(filas, columnas);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        });
+    </script>
+</body>
+</html>
