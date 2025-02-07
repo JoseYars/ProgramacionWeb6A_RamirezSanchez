@@ -120,12 +120,14 @@
                         e.preventDefault();
                         if (juegoTerminado) return;
 
-                        if (celda.classList.contains('marcada')) {
-                            celda.classList.remove('marcada');
-                            celda.textContent = '';
+                        const celdaObjetivo = e.target;
+
+                        if (celdaObjetivo.classList.contains('marcada')) {
+                            celdaObjetivo.classList.remove('marcada');
+                            celdaObjetivo.textContent = '';
                         } else {
-                            celda.classList.add('marcada');
-                            celda.textContent = '🚩';
+                            celdaObjetivo.classList.add('marcada');
+                            celdaObjetivo.textContent = '🚩';
                         }
                     });
 
@@ -140,7 +142,6 @@
             const mensajeDiv = document.getElementById('mensaje');
             mensajeDiv.innerHTML = '<div class="mensaje-perdida">¡Has perdido! 😢</div>';
 
-            // Espera 3 segundos y reinicia el juego automáticamente
             setTimeout(() => {
                 location.reload();
             }, 3000);
