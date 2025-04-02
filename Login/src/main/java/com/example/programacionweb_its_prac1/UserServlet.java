@@ -1,64 +1,107 @@
 package com.example.programacionweb_its_prac1;
 
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.Jws;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtParser;
-import io.jsonwebtoken.Jwts;
+import com.google.gson.Gson;
+import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import jakarta.servlet.annotation.*;
-
 import java.io.IOException;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.Map;
+import java.sql.SQLException;
+import java.util.List;
 
-import static com.example.programacionweb_its_prac1.AutenticacionServlet.generalKey;
-
-@WebServlet("/user-servlet/*")
+@WebServlet(name = "UserServlet", value = {"/user-servlet", "/user-servlet/*"})
 public class UserServlet extends HttpServlet {
-    private final JsonResponse jResp = new JsonResponse();
+    private final UserDAO userDAO = new UserDAO();
+    private final Gson gson = new Gson();
 
     @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-        resp.setContentType("application/json");
-        String authTokenHeader = req.getHeader("Authorization");
-        validateAuthToken(req, resp, authTokenHeader.split(" ")[1]);
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String token = request.getHeader("Authorization");
+        if (!userDAO.validateToken(token)) {
+            sendErrorResponse(response, 422, "Token inválido o faltante");
+            return;
+        }
+
+        String pathInfo = request.getPathInfo();
+
+        try {
+            if (pathInfo == null || pathInfo.equals("/")) {
+                // Obtener todos los usuarios
+                List<User> users = userDAO.getAllUsers();
+                sendJsonResponse(response, HttpServletResponse.SC_OK, users);
+            } else {
+                // Obtener usuario por ID
+                String[] splits = pathInfo.split("/");
+                if (splits.length != 2) {
+                    sendErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "Formato de URL inválido");
+                    return;
+                }
+
+                int userId = Integer.parseInt(splits[1]);
+                User user = userDAO.getUserById(userId);
+
+                if (user == null) {
+                    sendErrorResponse(response, HttpServletResponse.SC_NOT_FOUND, "Usuario no encontrado");
+                    return;
+                }
+
+                sendJsonResponse(response, HttpServletResponse.SC_OK, user);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            sendErrorResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Error en la base de datos");
+        } catch (NumberFormatException e) {
+            sendErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "ID debe ser numérico");
+        }
     }
 
-    private void validateAuthToken(HttpServletRequest req, HttpServletResponse resp, String token) throws IOException {
-        JwtParser jwtParser = Jwts.parser()
-                .verifyWith(generalKey())
-                .build();
-        try {
-            // Parsear el token y verificar
-            Jws<Claims> claims = jwtParser.parseSignedClaims(token);
-
-            // Encontrar el usuario
-            String username = claims.getPayload().getSubject();
-            User user = null;
-            for (User u : AutenticacionServlet.users.values()) {
-                if (u.getUsername().equals(username)) {
-                    user = u;
-                    break;
-                }
-            }
-
-            if (user != null) {
-                // Crear un mapa con los datos del usuario (excluyendo la contraseña)
-                Map<String, Object> userData = new HashMap<>();
-                userData.put("fullName", user.getFullName());
-                userData.put("email", user.getEmail());
-                userData.put("username", user.getUsername());
-
-                jResp.success(req, resp, "Datos de usuario", userData);
-            } else {
-                jResp.failed(req, resp, "Usuario no encontrado", HttpServletResponse.SC_NOT_FOUND);
-            }
-        } catch (ExpiredJwtException e) {
-            jResp.failed(req, resp, "Token expirado", HttpServletResponse.SC_UNAUTHORIZED);
-        } catch (Exception e) {
-            jResp.failed(req, resp, "Token inválido: " + e.getMessage(), HttpServletResponse.SC_UNAUTHORIZED);
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        String token = request.getHeader("Authorization");
+        if (!userDAO.validateToken(token)) {
+            sendErrorResponse(response, 422, "Token inválido o faltante");
+            return;
         }
+
+        try {
+            User newUser = gson.fromJson(request.getReader(), User.class);
+
+            if (newUser.getName() == null || newUser.getEmail() == null || newUser.getPassword() == null) {
+                sendErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "Faltan campos requeridos");
+                return;
+            }
+
+            boolean created = userDAO.createUser(newUser);
+
+            if (created) {
+                sendJsonResponse(response, HttpServletResponse.SC_CREATED,
+                        new JsonResponse("success", "Usuario creado exitosamente"));
+            } else {
+                sendErrorResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Error al crear usuario");
+            }
+        } catch (SQLException e) {
+            if (e.getSQLState().equals("23000")) { // Violación de constraint (email duplicado)
+                sendErrorResponse(response, HttpServletResponse.SC_CONFLICT, "El email ya está registrado");
+            } else {
+                e.printStackTrace();
+                sendErrorResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Error en la base de datos");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            sendErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "Datos inválidos");
+        }
+    }
+
+    private void sendJsonResponse(HttpServletResponse response, int statusCode, Object data) throws IOException {
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        response.setStatus(statusCode);
+        response.getWriter().write(gson.toJson(data));
+    }
+
+    private void sendErrorResponse(HttpServletResponse response, int statusCode, String message) throws IOException {
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        response.setStatus(statusCode);
+        response.getWriter().write("{\"error\": \"" + message + "\"}");
     }
 }
